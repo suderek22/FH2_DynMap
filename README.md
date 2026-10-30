@@ -1,4 +1,5 @@
-<img width="1917" height="916" alt="image" src="https://github.com/user-attachments/assets/bfd9b99a-1bf1-4b51-b6e7-6fa31deeceae" />
+<img width="1908" height="924" alt="image" src="https://github.com/user-attachments/assets/fc80f6fc-b7b4-44d7-a6a2-ef76b566eba3" />
+
  
 # DynMap 0.1.5 (alpha)
 
