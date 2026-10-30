@@ -31,6 +31,12 @@
   var canvas = L.canvas({ padding: 0.3 });
   var roadData = null, ovData = null, builtFor = '';
   function wll(x, z) { var p = worldToPx(x, z); return toLL(p.x, p.y); }
+  var ROAD_STYLE = {
+    f: { color: '#fff08a', weight: 4, opacity: 0.95 },
+    a: { color: '#ffffff', weight: 3, opacity: 0.85 },
+    b: { color: '#ffffff', weight: 2, opacity: 0.7 },
+    d: { color: '#f0906a', weight: 2, opacity: 0.9 }
+  };
   function buildOverlays() {
     var key = [calib.ax, calib.bx, calib.az, calib.bz].join(',');
     if (key === builtFor) return;
@@ -38,16 +44,19 @@
     roadsLayer.clearLayers(); camsLayer.clearLayers(); zonesLayer.clearLayers();
     if (roadData) roadData.forEach(function (c) {
       var pts = [];
-      for (var i = 0; i < c.length; i += 2) pts.push(wll(c[i], c[i + 1]));
-      L.polyline(pts, { renderer: canvas, color: '#fff3c4', weight: 2, opacity: 0.55, interactive: false }).addTo(roadsLayer);
+      for (var i = 1; i < c.length; i += 2) pts.push(wll(c[i], c[i + 1]));
+      var st = ROAD_STYLE[c[0]] || ROAD_STYLE.b;
+      L.polyline(pts, { renderer: canvas, color: st.color, weight: st.weight, opacity: st.opacity, dashArray: st.dash, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(roadsLayer);
     });
     if (ovData) {
       ovData.cameras.forEach(function (c) {
         L.marker(wll(c.p[0], c.p[1]), { icon: icon('cam', 26, 26, 13, 13), title: 'Speed camera ' + c.id }).addTo(camsLayer);
       });
       ovData.zones.forEach(function (z) {
-        var a = wll(z.a[0], z.a[1]), b = wll(z.b[0], z.b[1]);
-        L.polyline([a, b], { color: '#35e6ff', weight: 4, opacity: 0.9, dashArray: '8 6' }).addTo(zonesLayer);
+        var a = wll(z.a[0], z.a[1]), b = wll(z.b[0], z.b[1]), line = [];
+        if (z.path) for (var i = 0; i < z.path.length; i += 2) line.push(wll(z.path[i], z.path[i + 1]));
+        else line = [a, b];
+        L.polyline(line, { color: '#35e6ff', weight: 4, opacity: 0.9, dashArray: '8 6', lineJoin: 'round' }).addTo(zonesLayer);
         [a, b].forEach(function (q, i) {
           L.marker(q, { icon: icon('cam_zone', 24, 24, 12, 12), title: 'Speed zone ' + z.id + (i ? ' end' : ' start') }).addTo(zonesLayer);
         });
@@ -122,6 +131,7 @@
       el.querySelector('.ring').style.borderColor = col;
       el.querySelector('.ring').style.background = col + '47';
       el.querySelector('.tag').style.background = col;
+      el.querySelector('.tag').style.color = (col === '#ffffff' || col === '#ffd400') ? '#000' : '#fff';
     }
     if (cfg.trail) {
       var t = trailFor(p), last = t.pts[t.pts.length - 1];

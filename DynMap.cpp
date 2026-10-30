@@ -27,7 +27,7 @@ extern "C" IMAGE_DOS_HEADER __ImageBase;
 
 namespace {
 
-constexpr char kVersion[] = "0.1.4";
+constexpr char kVersion[] = "0.1.8";
 constexpr char kSettingKey[] = "DynMapEnabled";
 
 // Same HUD hook as VirtualDashboard: rax = car-state object, [rdi+0xE8] = the car.
@@ -72,6 +72,7 @@ std::mutex g_mutex;
 Sample g_sample;
 Calib g_calib;
 std::string g_player_name = "Host";
+std::atomic<int> g_wristband{0};
 
 void logf(const char* fmt, ...) {
     char buf[512];
@@ -219,9 +220,9 @@ std::string state_json() {
     if (s.valid) {
         std::snprintf(buf, sizeof(buf),
                       "[{\"id\":1,\"name\":\"%s\",\"car\":\"%s\",\"x\":%.2f,\"y\":%.2f,"
-                      "\"z\":%.2f,\"speed\":%.2f,\"host\":true}]",
+                      "\"z\":%.2f,\"speed\":%.2f,\"host\":true,\"wb\":%d}]",
                       json_escape(name).c_str(), json_escape(s.car).c_str(), s.pos[0],
-                      s.pos[1], s.pos[2], s.speed);
+                      s.pos[1], s.pos[2], s.speed, g_wristband.load());
         players = buf;
     }
     std::snprintf(buf, sizeof(buf),
@@ -443,6 +444,14 @@ FH2MOD_EXPORT int fh2mod_init(const FH2ModApi* api) {
     const bool lan = GetPrivateProfileIntW(L"DynMap", L"AllowLan", 1, g_ini_path.c_str()) != 0;
     g_lan.store(lan);
     WritePrivateProfileStringW(L"DynMap", L"AllowLan", lan ? L"1" : L"0", g_ini_path.c_str());
+    {
+        // Manual wristband tier (1-7, 0 = unknown/white) until automatic reading is implemented.
+        int wb = (int)GetPrivateProfileIntW(L"DynMap", L"Wristband", 0, g_ini_path.c_str());
+        g_wristband.store(wb < 0 || wb > 7 ? 0 : wb);
+        wchar_t v[8];
+        swprintf(v, 8, L"%d", g_wristband.load());
+        WritePrivateProfileStringW(L"DynMap", L"Wristband", v, g_ini_path.c_str());
+    }
     wchar_t name[64] = {};
     GetPrivateProfileStringW(L"DynMap", L"PlayerName", L"Host", name, 64, g_ini_path.c_str());
     {
