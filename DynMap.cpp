@@ -1,4 +1,4 @@
-// DynMap: live 2D map of Forza Horizon 2 served on a local web server.
+﻿// DynMap: live 2D map of Forza Horizon 2 served on a local web server.
 // Alpha: only the host player is published.
 #include "fh2mod.h"
 
@@ -18,7 +18,9 @@
 #include <fstream>
 #include <iterator>
 #include <mutex>
+#include <algorithm>
 #include <string>
+#include <vector>
 #include <thread>
 
 #include "favicon_png.h"
@@ -27,7 +29,7 @@ extern "C" IMAGE_DOS_HEADER __ImageBase;
 
 namespace {
 
-constexpr char kVersion[] = "0.1.9";
+constexpr char kVersion[] = "0.2.0";
 constexpr char kSettingKey[] = "DynMapEnabled";
 
 // Same HUD hook as VirtualDashboard: rax = car-state object, [rdi+0xE8] = the car.
@@ -125,6 +127,121 @@ void publish(const Sample& s) {
     g_sample = s;
 }
 
+// ---- Drivatars (demo of multiple players) ----
+// ForzaCar's per-frame update (rcx = car). Car kind at car+0x4D08: 0 local player, 1 Drivatar, 2 traffic.
+constexpr std::uintptr_t kCarKindRva = 0xF62280; // int(car), called constantly for every car
+constexpr std::uintptr_t kKindOffset = 0x4D08;
+constexpr int kMaxAi = 64;
+constexpr std::uint64_t kAiExpireMs = 1500;
+struct AiCar {
+    const void* car = nullptr;
+    std::uint64_t tick = 0;
+    int id = 0;
+    Sample s;
+};
+AiCar g_ai[kMaxAi];
+std::mutex g_ai_mutex;
+int g_next_ai_id = 2;
+std::atomic<bool> g_show_ai{true};
+std::vector<std::string> g_ai_names;
+
+// Drivatar gamertags: media\DrivatarGlobalCache\DefaultCache.bin, 125 records of 9816 bytes after an
+// 8-byte header, each starting with a 16-character UTF-16 gamertag.
+void load_ai_names() {
+    std::vector<wchar_t> p(MAX_PATH * 2);
+    GetModuleFileNameW(nullptr, p.data(), static_cast<DWORD>(p.size()));
+    std::filesystem::path f = std::filesystem::path(p.data()).parent_path() / L"media" /
+                              L"DrivatarGlobalCache" / L"DefaultCache.bin";
+    std::ifstream in(f, std::ios::binary);
+    if (!in) { logf("Drivatar name cache not found (%ls); using fallback names.", f.c_str()); return; }
+    std::vector<char> b((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    constexpr std::size_t kHead = 8, kRec = 9816;
+    for (std::size_t o = kHead; o + 32 <= b.size(); o += kRec) {
+        std::wstring w(reinterpret_cast<const wchar_t*>(b.data() + o), 16);
+        w.resize(wcsnlen(w.c_str(), 16));
+        if (w.empty()) continue;
+        const int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
+        std::string s(n > 0 ? n - 1 : 0, 0);
+        if (n > 1) WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, s.data(), n, nullptr, nullptr);
+        if (!s.empty() && std::find(g_ai_names.begin(), g_ai_names.end(), s) == g_ai_names.end())
+            g_ai_names.push_back(s);
+    }
+    logf("Loaded %zu Drivatar gamertags.", g_ai_names.size());
+}
+int g_name_probes = 0;
+
+// Logs readable strings inside a Drivatar's car object, to locate where its driver name lives.
+void probe_strings(const std::uint8_t* c) {
+    __try {
+        int found = 0;
+        for (int i = 0; i < 0x5000 && found < 24;) {
+            int n = 0;
+            while (i + n < 0x5000 && c[i + n] >= 0x20 && c[i + n] < 0x7f) ++n;
+            if (n >= 5) {
+                char b[64] = {};
+                std::memcpy(b, c + i, n < 63 ? n : 63);
+                logf("  car+0x%X ascii \"%s\"", i, b);
+                ++found;
+            }
+            i += n ? n : 1;
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+}
+
+bool read_ai_kind_state(const void* car, const void** state) {
+    __try {
+        const auto* c = static_cast<const std::uint8_t*>(car);
+        if (*reinterpret_cast<const int*>(c + kKindOffset) != 1) return false;
+        *state = *reinterpret_cast<void* const*>(c + kStateOffset);
+        return *state != nullptr;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+int (*g_kind_orig)(void*) = nullptr;
+void note_car(const void* car);
+
+int car_kind_detour(void* car) {
+    note_car(car);
+    return g_kind_orig(car);
+}
+
+void note_car(const void* car) {
+    if (!g_enabled.load() || !g_show_ai.load()) return;
+    if (!car) return;
+    const std::uint64_t now = GetTickCount64();
+    {
+        std::lock_guard<std::mutex> lock(g_ai_mutex);
+        for (const AiCar& a : g_ai)
+            if (a.car == car && now - a.tick < 100) return;
+    }
+    Sample t;
+    const void* state = nullptr;
+    if (!read_ai_kind_state(car, &state)) return;
+    if (!read_sample(car, state, &t) || !t.car[0]) return;
+    std::lock_guard<std::mutex> lock(g_ai_mutex);
+    AiCar* slot = nullptr;
+    for (AiCar& a : g_ai)
+        if (a.car == car) { slot = &a; break; }
+    if (!slot)
+        for (AiCar& a : g_ai)
+            if (!a.car || now - a.tick > kAiExpireMs) { slot = &a; break; }
+    if (!slot) return;
+    if (slot->car != car) {
+        slot->car = car;
+        slot->id = g_next_ai_id++;
+        if (g_name_probes < 3) {
+            ++g_name_probes;
+            logf("Drivatar #%d: %s", slot->id, t.car);
+            probe_strings(static_cast<const std::uint8_t*>(car));
+        }
+    }
+    slot->tick = now;
+    slot->s = t;
+}
+
 void hud_hook(FH2Context* ctx, void*) {
     if (!g_enabled.load()) return;
     const std::uint64_t now = GetTickCount64();
@@ -194,6 +311,14 @@ void install_hook() {
         return;
     }
     logf("Position hook active.");
+    if (g_show_ai.load()) {
+        load_ai_names();
+        FH2Hook* a = g_api->hook_function(g_mod, "DynMap: car kind (Drivatars)", g_exe + kCarKindRva,
+                                          reinterpret_cast<void*>(car_kind_detour),
+                                          reinterpret_cast<void**>(&g_kind_orig));
+        if (!a || !g_api->enable_hooks(g_mod, a)) logf("Could not install the Drivatar hook.");
+        else logf("Drivatar hook active.");
+    }
 }
 
 std::string json_escape(const std::string& s) {
@@ -216,15 +341,37 @@ std::string state_json() {
         name = g_player_name;
     }
     char buf[1024];
-    std::string players = "[]";
+    std::string players = "[";
     if (s.valid) {
         std::snprintf(buf, sizeof(buf),
-                      "[{\"id\":1,\"name\":\"%s\",\"car\":\"%s\",\"x\":%.2f,\"y\":%.2f,"
-                      "\"z\":%.2f,\"speed\":%.2f,\"host\":true,\"wb\":%d}]",
+                      "{\"id\":1,\"name\":\"%s\",\"car\":\"%s\",\"x\":%.2f,\"y\":%.2f,"
+                      "\"z\":%.2f,\"speed\":%.2f,\"host\":true,\"wb\":%d}",
                       json_escape(name).c_str(), json_escape(s.car).c_str(), s.pos[0],
                       s.pos[1], s.pos[2], s.speed, g_wristband.load());
-        players = buf;
+        players += buf;
     }
+    if (g_show_ai.load()) {
+        // Gamertags come from the game cache; the pairing with cars and the wristband are simulated.
+        static const char* const kNames[] = {
+            "Marco Rossi", "Lea Dubois", "Nico_Drift", "Sofia V", "Hugo Martin", "Giulia R",
+            "TurboTom", "Elena F", "Luca B", "Chloe Petit", "Matteo G", "Zoe Laurent",
+            "Dario K", "Ines Moreau", "Paolo S", "Jade L", "Enzo Bianchi", "Mila R",
+            "Theo Garnier", "Anna M", "Rico_77", "Camille B", "Fabio N", "Alice D"};
+        const std::uint64_t now = GetTickCount64();
+        std::lock_guard<std::mutex> lock(g_ai_mutex);
+        for (const AiCar& a : g_ai) {
+            if (!a.car || now - a.tick > kAiExpireMs) continue;
+            std::snprintf(buf, sizeof(buf),
+                          "%s{\"id\":%d,\"name\":\"%s\",\"car\":\"%s\",\"x\":%.2f,\"y\":%.2f,"
+                          "\"z\":%.2f,\"speed\":%.2f,\"ai\":true,\"wb\":%d}",
+                          players.size() > 1 ? "," : "", a.id,
+                          json_escape(g_ai_names.empty() ? std::string(kNames[a.id % (sizeof(kNames) / sizeof(kNames[0]))]) : g_ai_names[(a.id * 7) % g_ai_names.size()]).c_str(),
+                          json_escape(a.s.car).c_str(), a.s.pos[0], a.s.pos[1], a.s.pos[2],
+                          a.s.speed, 1 + (a.id * 5 + a.id / 7) % 7);
+            players += buf;
+        }
+    }
+    players += "]";
     std::snprintf(buf, sizeof(buf),
                   "{\"version\":\"%s\",\"session\":\"local\",\"calib\":{\"ax\":%.9g,"
                   "\"bx\":%.9g,\"az\":%.9g,\"bz\":%.9g},\"players\":",
@@ -423,7 +570,7 @@ FH2MOD_EXPORT int fh2mod_init(const FH2ModApi* api) {
     info.platform_version = "2.8.0";
     info.github_repo = "suderek22/FH2_DynMap";
     info.check_updates = 1;
-    info.description = "Live web map of Forza Horizon 2 (alpha: host player only).";
+    info.description = "Live web map of Forza Horizon 2 (alpha: you, plus demo Drivatars).";
     g_api = api;
     g_mod = api->register_mod(&info);
     if (!g_mod) return 1;
@@ -443,6 +590,12 @@ FH2MOD_EXPORT int fh2mod_init(const FH2ModApi* api) {
     g_port.store(port);
     const bool lan = GetPrivateProfileIntW(L"DynMap", L"AllowLan", 1, g_ini_path.c_str()) != 0;
     g_lan.store(lan);
+    {
+        // Drivatars on the map are a demo of multi-player listing; 0 turns them off.
+        const bool ai = GetPrivateProfileIntW(L"DynMap", L"ShowAI", 1, g_ini_path.c_str()) != 0;
+        g_show_ai.store(ai);
+        WritePrivateProfileStringW(L"DynMap", L"ShowAI", ai ? L"1" : L"0", g_ini_path.c_str());
+    }
     WritePrivateProfileStringW(L"DynMap", L"AllowLan", lan ? L"1" : L"0", g_ini_path.c_str());
     {
         // Manual wristband tier (1-7, 0 = unknown/white) until automatic reading is implemented.
@@ -453,7 +606,11 @@ FH2MOD_EXPORT int fh2mod_init(const FH2ModApi* api) {
         WritePrivateProfileStringW(L"DynMap", L"Wristband", v, g_ini_path.c_str());
     }
     wchar_t name[64] = {};
-    GetPrivateProfileStringW(L"DynMap", L"PlayerName", L"Host", name, 64, g_ini_path.c_str());
+    GetPrivateProfileStringW(L"DynMap", L"PlayerName", L"", name, 64, g_ini_path.c_str());
+    // Not set (or the old "Host" default): use the Windows user name until the real gamertag can be read.
+    if (!name[0] || wcscmp(name, L"Host") == 0) {
+        if (!GetEnvironmentVariableW(L"USERNAME", name, 64)) wcscpy_s(name, L"Host");
+    }
     {
         char utf8[200] = {};
         WideCharToMultiByte(CP_UTF8, 0, name, -1, utf8, sizeof(utf8) - 1, nullptr, nullptr);
@@ -471,7 +628,7 @@ FH2MOD_EXPORT int fh2mod_init(const FH2ModApi* api) {
     }
     WritePrivateProfileStringW(L"DynMap", L"Enabled", enabled ? L"1" : L"0", g_ini_path.c_str());
     WritePrivateProfileStringW(L"DynMap", L"Port", std::to_wstring(port).c_str(), g_ini_path.c_str());
-    WritePrivateProfileStringW(L"DynMap", L"PlayerName", name[0] ? name : L"Host", g_ini_path.c_str());
+    WritePrivateProfileStringW(L"DynMap", L"PlayerName", name, g_ini_path.c_str());
     save_calib(g_calib);
 
     if (api->api_version >= 4 && api->add_setting) {
@@ -491,3 +648,5 @@ FH2MOD_EXPORT int fh2mod_init(const FH2ModApi* api) {
     logf("%s registered", kVersion);
     return 0;
 }
+
+
