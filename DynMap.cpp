@@ -27,7 +27,7 @@ extern "C" IMAGE_DOS_HEADER __ImageBase;
 
 namespace {
 
-constexpr char kVersion[] = "0.1.8";
+constexpr char kVersion[] = "0.1.9";
 constexpr char kSettingKey[] = "DynMapEnabled";
 
 // Same HUD hook as VirtualDashboard: rax = car-state object, [rdi+0xE8] = the car.
