@@ -1,6 +1,6 @@
 <img width="1917" height="916" alt="image" src="https://github.com/user-attachments/assets/bfd9b99a-1bf1-4b51-b6e7-6fa31deeceae" />
  
-# DynMap 0.1.4 (alpha)
+# DynMap 0.1.5 (alpha)
 
 Live 2D web map of Forza Horizon 2, served from the game on your own PC.
 Open **http://localhost:8090/** in a browser while you drive.
@@ -40,3 +40,6 @@ The server listens on your network too (AllowLan=1, so a phone or other PC can o
 - Only the host player; the multiplayer session list is a placeholder.
 - Heading comes from the movement direction, so it is only shown while moving.
 - Landmarks: only the Horizon Festival so far.
+- No street layer yet.
+- No layer with speed cameras and speed zones yet (needs their positions from the game).
+- The mod does not send the car class yet, so trail/list colours come from a per-player palette instead of the band colour.
