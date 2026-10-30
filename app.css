@@ -1,0 +1,88 @@
+:root {
+  --pink: #ec248c;
+  --pink-2: #ff5fb0;
+  --bg: #120a14;
+  --bg-2: #1c1020;
+  --bg-3: #2a1730;
+  --line: #43234a;
+  --text: #f6eef7;
+  --muted: #a98fb0;
+  --ok: #4cd98a;
+  --panel-w: 300px;
+  --topbar-h: 54px;
+  --font: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.4 var(--font); overflow: hidden; }
+button, select { font: inherit; color: inherit; }
+.mono { font-family: Consolas, monospace; }
+
+.app { position: fixed; inset: 0; }
+.map { position: absolute; inset: 0; background: #07040a; }
+.leaflet-container { background: #07040a; font: inherit; }
+.leaflet-control-attribution { display: none; }
+.leaflet-bar { border: 1px solid var(--line) !important; box-shadow: 0 2px 10px rgba(0,0,0,.5) !important; }
+.leaflet-bar a { background: var(--bg-2) !important; color: var(--text) !important; border-bottom-color: var(--line) !important; }
+.leaflet-bar a:hover { background: var(--pink) !important; }
+.leaflet-top.leaflet-left { left: calc(var(--panel-w) + 22px); top: calc(var(--topbar-h) + 12px); }
+.calibrating .leaflet-container { cursor: crosshair; }
+
+.topbar { position: absolute; top: 0; left: 0; right: 0; height: var(--topbar-h); z-index: 1000; display: flex; align-items: center; gap: 12px; padding: 0 14px;
+  background: linear-gradient(90deg, rgba(236,36,140,.95), rgba(120,20,90,.92) 45%, rgba(18,10,20,.92)); border-bottom: 2px solid var(--pink); }
+.logo { width: 34px; height: 34px; border-radius: 8px; box-shadow: 0 0 0 2px rgba(255,255,255,.25); }
+.title { display: flex; flex-direction: column; line-height: 1.05; }
+.title span:first-child { font-weight: 800; font-size: 19px; letter-spacing: .06em; text-transform: uppercase; font-style: italic; }
+.title .sub { font-size: 11px; color: #ffd3ec; letter-spacing: .08em; text-transform: uppercase; }
+.topbar-right { margin-left: auto; display: flex; gap: 8px; }
+.pill { font-size: 12px; padding: 4px 12px; border-radius: 999px; background: rgba(18,10,20,.7); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.pill.on { color: var(--ok); border-color: rgba(76,217,138,.5); }
+
+.panel { position: absolute; top: calc(var(--topbar-h) + 10px); bottom: 10px; width: var(--panel-w); z-index: 900; overflow-y: auto;
+  background: rgba(28,16,32,.92); backdrop-filter: blur(6px); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+.panel.left { left: 10px; }
+.panel.right { right: 10px; bottom: auto; max-height: calc(100% - var(--topbar-h) - 20px); }
+.panel section { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.panel section:last-child { border-bottom: 0; }
+h2 { margin: 0 0 10px; font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--pink-2); display: flex; align-items: center; gap: 8px; }
+.badge { background: var(--pink); color: #fff; border-radius: 999px; padding: 0 8px; font-size: 11px; letter-spacing: 0; }
+.hint { color: var(--muted); font-size: 12px; margin: 6px 0; }
+
+.session { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: var(--bg-3); border: 1px solid transparent; margin-bottom: 6px; }
+.session.active { border-color: var(--pink); box-shadow: inset 3px 0 0 var(--pink); }
+.session.off { opacity: .45; }
+.session small { display: block; color: var(--muted); font-size: 11px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #5b4562; flex: none; }
+.dot.on { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+
+.row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 0; cursor: pointer; }
+.row input[type=checkbox] { accent-color: var(--pink); width: 16px; height: 16px; order: -1; margin-right: 4px; }
+.row:has(input[type=checkbox]) { justify-content: flex-start; }
+.row input[type=range] { accent-color: var(--pink); width: 130px; }
+select { background: var(--bg-3); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
+
+.btns { display: flex; gap: 6px; }
+button { background: var(--pink); border: 0; border-radius: 8px; padding: 6px 12px; font-weight: 700; cursor: pointer; }
+button:hover { background: var(--pink-2); }
+button[disabled] { opacity: .4; cursor: default; }
+button.ghost { background: var(--bg-3); border: 1px solid var(--line); }
+button.active { outline: 2px solid #fff; }
+
+.player { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: var(--bg-3); border: 1px solid transparent; margin-bottom: 6px; cursor: pointer; }
+.player:hover { border-color: var(--pink-2); }
+.player.sel { border-color: var(--pink); box-shadow: inset 3px 0 0 var(--pink); }
+.pcol { width: 6px; align-self: stretch; border-radius: 3px; flex: none; margin: -2px 0; }
+.player img { height: 34px; width: auto; flex: none; }
+.player b { display: block; }
+.player small { display: block; color: var(--muted); font-size: 11px; }
+.player .spd { margin-left: auto; text-align: right; font-weight: 800; font-style: italic; color: var(--pink-2); }
+.player .spd small { font-style: normal; font-weight: 400; }
+
+.me { position: relative; width: 44px; height: 44px; }
+.me .ring { position: absolute; inset: 6px; border-radius: 50%; border: 2px solid var(--pink); background: rgba(236,36,140,.28); box-shadow: 0 0 14px var(--pink); animation: pulse 1.6s ease-out infinite; }
+.me img { position: absolute; left: 50%; top: 50%; width: 22px; height: auto; margin: -16px 0 0 -11px; filter: drop-shadow(0 0 3px #000); transition: transform .2s linear; }
+.me .tag { position: absolute; left: 50%; top: 40px; transform: translateX(-50%); white-space: nowrap; font-size: 11px; font-weight: 700; background: var(--pink); color: #fff; padding: 1px 7px; border-radius: 999px; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(236,36,140,.7); } 100% { box-shadow: 0 0 0 16px rgba(236,36,140,0); } }
+.lm img { display: block; filter: drop-shadow(0 2px 3px #000); }
+.cal-pt { width: 16px; height: 16px; border: 2px solid #fff; background: var(--pink); border-radius: 50%; box-shadow: 0 0 0 2px #000; }
+
+@media (max-width: 900px) { :root { --panel-w: 230px; } }
