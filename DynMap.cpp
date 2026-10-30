@@ -27,7 +27,7 @@ extern "C" IMAGE_DOS_HEADER __ImageBase;
 
 namespace {
 
-constexpr char kVersion[] = "0.1.2";
+constexpr char kVersion[] = "0.1.4";
 constexpr char kSettingKey[] = "DynMapEnabled";
 
 // Same HUD hook as VirtualDashboard: rax = car-state object, [rdi+0xE8] = the car.
@@ -46,8 +46,14 @@ struct Sample {
 };
 
 // World metres -> map pixels (7168x4096): px = ax*x + bx, py = az*z + bz.
+// Default from the game's map profile: the map is 12000 m wide with its top-left corner at
+// world (-7500, -11000), i.e. 7168/12000 px per metre.
+constexpr double kDefBx = 2555.30502;
+constexpr double kDefBz = 327.298182;
+constexpr double kDefAx = 0.342617167;
+constexpr double kDefAz = -0.343337966;
 struct Calib {
-    double ax = 1, bx = 3584, az = 1, bz = 2048;
+    double ax = kDefAx, bx = kDefBx, az = kDefAz, bz = kDefBz;
 };
 
 const FH2ModApi* g_api = nullptr;
@@ -132,6 +138,11 @@ void hud_hook(FH2Context* ctx, void*) {
     Sample t;
     if (!read_sample(car, reinterpret_cast<const void*>(ctx->rax), &t)) return;
     g_last_sample.store(now);
+    static std::uint64_t last_log = 0;
+    if (now - last_log > 15000) {
+        last_log = now;
+        logf("Position x=%.0f y=%.0f z=%.0f", t.pos[0], t.pos[1], t.pos[2]);
+    }
     std::memcpy(g_car_name, t.car, sizeof(g_car_name));
     g_car.store(car);
     publish(t);
@@ -439,10 +450,13 @@ FH2MOD_EXPORT int fh2mod_init(const FH2ModApi* api) {
         WideCharToMultiByte(CP_UTF8, 0, name, -1, utf8, sizeof(utf8) - 1, nullptr, nullptr);
         std::lock_guard<std::mutex> lock(g_mutex);
         g_player_name = utf8[0] ? utf8 : "Host";
-        g_calib.ax = load_double(L"Ax", 1);
-        g_calib.bx = load_double(L"Bx", 3584);
-        g_calib.az = load_double(L"Az", 1);
-        g_calib.bz = load_double(L"Bz", 2048);
+        g_calib.ax = load_double(L"Ax", kDefAx);
+        g_calib.bx = load_double(L"Bx", kDefBx);
+        g_calib.az = load_double(L"Az", kDefAz);
+        g_calib.bz = load_double(L"Bz", kDefBz);
+        // 0.1.0-0.1.2 wrote an uncalibrated placeholder; replace it with the new default.
+        if (g_calib.ax == 1 && g_calib.bx == 3584 && g_calib.az == 1 && g_calib.bz == 2048)
+            g_calib = Calib{};
         if (g_calib.ax == 0) g_calib.ax = 1;
         if (g_calib.az == 0) g_calib.az = 1;
     }
