@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DynMap - Forza Horizon 2</title>
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="app">
+  <div id="map" class="map"></div>
+
+  <header class="topbar">
+    <img class="logo" src="/favicon.png" alt="">
+    <div class="title"><span>DynMap</span><span class="sub">Forza Horizon 2 &middot; live map</span></div>
+    <div class="topbar-right">
+      <span class="pill" id="coords">x - &nbsp; y -</span>
+      <span class="pill" id="status">connecting</span>
+    </div>
+  </header>
+
+  <aside class="panel left" id="left">
+    <section>
+      <h2>Server sessions</h2>
+      <div class="session active"><span class="dot on"></span>
+        <div><b>Local session</b><small>Single player &middot; this PC</small></div></div>
+      <div class="session off"><span class="dot"></span>
+        <div><b>Multiplayer hosting</b><small>Coming soon</small></div></div>
+    </section>
+
+    <section>
+      <h2>Settings</h2>
+      <label class="row"><input type="checkbox" id="optFollow" checked> Follow selected player</label>
+      <label class="row"><input type="checkbox" id="optTrail" checked> Show trail</label>
+      <label class="row"><input type="checkbox" id="optLandmarks" checked> Show landmarks</label>
+      <label class="row">Speed unit
+        <select id="optUnit"><option value="kmh">km/h</option><option value="mph">mph</option></select></label>
+      <label class="row">Map brightness <input type="range" id="optBright" min="50" max="150" value="100"></label>
+    </section>
+
+    <section>
+      <h2>Position calibration</h2>
+      <p class="hint">Drive to a spot you can recognise, press <b>Add point</b>, then click that spot on the map.
+        Two points far apart (different x and y) set scale and offset; one point only moves the offset.</p>
+      <div class="btns">
+        <button id="calAdd">Add point</button>
+        <button id="calApply" disabled>Apply</button>
+        <button id="calReset" class="ghost">Reset</button>
+      </div>
+      <div id="calList" class="hint"></div>
+      <div id="calInfo" class="hint mono"></div>
+    </section>
+  </aside>
+
+  <aside class="panel right" id="right">
+    <section>
+      <h2>Players <span id="count" class="badge">0</span></h2>
+      <div id="players"></div>
+      <p class="hint" id="noPlayers">Waiting for the game. Start driving in free roam.</p>
+    </section>
+  </aside>
+</div>
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
