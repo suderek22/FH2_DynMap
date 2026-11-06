@@ -1,4 +1,4 @@
-﻿// DynMap: live 2D map of Forza Horizon 2 served on a local web server.
+// DynMap: live 2D map of Forza Horizon 2 served on a local web server.
 // Alpha: only the host player is published.
 #include "fh2mod.h"
 
@@ -29,7 +29,7 @@ extern "C" IMAGE_DOS_HEADER __ImageBase;
 
 namespace {
 
-constexpr char kVersion[] = "0.2.0";
+constexpr char kVersion[] = "0.3.0";
 constexpr char kSettingKey[] = "DynMapEnabled";
 
 // Same HUD hook as VirtualDashboard: rax = car-state object, [rdi+0xE8] = the car.
@@ -42,6 +42,7 @@ constexpr std::uintptr_t kPos = 0xEF0;          // x, y(height), z
 
 struct Sample {
     bool valid = false;
+    int track = -1;
     char car[64] = {};
     float pos[3] = {};
     float speed = 0;
@@ -73,6 +74,8 @@ char g_car_name[64] = {};
 std::mutex g_mutex;
 Sample g_sample;
 Calib g_calib;
+constexpr Calib kIslandCalib{0.9557333333333333, -6852.608, -0.9557333333333333, 716.8};
+Calib g_island_calib = kIslandCalib;
 std::string g_player_name = "Host";
 std::atomic<int> g_wristband{0};
 
@@ -104,11 +107,26 @@ void read_name(const std::uint8_t* c, char* out) {
     }
 }
 
+// Same manager and settled-state test as CarPackStudio's native travel module.
+int active_track() {
+    if (!g_exe) return -1;
+    __try {
+        const auto* manager = *reinterpret_cast<const std::uint8_t* const*>(g_exe + 0x365AD70);
+        if (!manager) return -1;
+        const auto* data = reinterpret_cast<const int*>(manager + 8);
+        return data[0] == data[1] && data[3] == 0 ? data[0] : -1;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return -1;
+    }
+}
+
 bool read_sample(const void* car, const void* state, Sample* t) {
     __try {
         const auto* c = static_cast<const std::uint8_t*>(car);
         const auto* s = static_cast<const std::uint8_t*>(state);
         if (!c || !s) return false;
+        t->track = active_track();
+        if (t->track != 542 && t->track != 549) return false;
         t->speed = *reinterpret_cast<const float*>(s + kSpeed);
         for (int i = 0; i < 3; ++i)
             t->pos[i] = *reinterpret_cast<const float*>(s + kPos + 4 * i);
@@ -330,19 +348,21 @@ std::string json_escape(const std::string& s) {
     return o;
 }
 
-std::string state_json() {
+std::string state_json(bool island) {
+    const int track = active_track();
+    const int requested_track = island ? 549 : 542;
     Sample s;
     Calib c;
     std::string name;
     {
         std::lock_guard<std::mutex> lock(g_mutex);
         s = g_sample;
-        c = g_calib;
+        c = island ? g_island_calib : g_calib;
         name = g_player_name;
     }
     char buf[1024];
     std::string players = "[";
-    if (s.valid) {
+    if (s.valid && track == requested_track && s.track == track) {
         std::snprintf(buf, sizeof(buf),
                       "{\"id\":1,\"name\":\"%s\",\"car\":\"%s\",\"x\":%.2f,\"y\":%.2f,"
                       "\"z\":%.2f,\"speed\":%.2f,\"host\":true,\"wb\":%d}",
@@ -350,7 +370,7 @@ std::string state_json() {
                       s.pos[1], s.pos[2], s.speed, g_wristband.load());
         players += buf;
     }
-    if (g_show_ai.load()) {
+    if (g_show_ai.load() && track == requested_track) {
         // Gamertags come from the game cache; the pairing with cars and the wristband are simulated.
         static const char* const kNames[] = {
             "Marco Rossi", "Lea Dubois", "Nico_Drift", "Sofia V", "Hugo Martin", "Giulia R",
@@ -360,7 +380,7 @@ std::string state_json() {
         const std::uint64_t now = GetTickCount64();
         std::lock_guard<std::mutex> lock(g_ai_mutex);
         for (const AiCar& a : g_ai) {
-            if (!a.car || now - a.tick > kAiExpireMs) continue;
+            if (!a.car || a.s.track != track || now - a.tick > kAiExpireMs) continue;
             std::snprintf(buf, sizeof(buf),
                           "%s{\"id\":%d,\"name\":\"%s\",\"car\":\"%s\",\"x\":%.2f,\"y\":%.2f,"
                           "\"z\":%.2f,\"speed\":%.2f,\"ai\":true,\"wb\":%d}",
@@ -374,16 +394,17 @@ std::string state_json() {
     players += "]";
     std::snprintf(buf, sizeof(buf),
                   "{\"version\":\"%s\",\"session\":\"local\",\"calib\":{\"ax\":%.9g,"
-                  "\"bx\":%.9g,\"az\":%.9g,\"bz\":%.9g},\"players\":",
-                  kVersion, c.ax, c.bx, c.az, c.bz);
+                  "\"bx\":%.9g,\"az\":%.9g,\"bz\":%.9g},\"activeMap\":\"%s\",\"players\":",
+                  kVersion, c.ax, c.bx, c.az, c.bz,
+                  track == 542 ? "anthem" : track == 549 ? "island" : "unknown");
     return std::string(buf) + players + "}";
 }
 
-void save_calib(const Calib& c) {
-    const auto put = [](const wchar_t* key, double v) {
+void save_calib(const Calib& c, bool island = false) {
+    const auto put = [island](const wchar_t* key, double v) {
         wchar_t b[64];
         swprintf(b, 64, L"%.9g", v);
-        WritePrivateProfileStringW(L"DynMap", key, b, g_ini_path.c_str());
+        WritePrivateProfileStringW(island ? L"DynMap.Island" : L"DynMap", key, b, g_ini_path.c_str());
     };
     put(L"Ax", c.ax);
     put(L"Bx", c.bx);
@@ -391,13 +412,28 @@ void save_calib(const Calib& c) {
     put(L"Bz", c.bz);
 }
 
-double load_double(const wchar_t* key, double def) {
+double load_double(const wchar_t* key, double def, bool island = false) {
     wchar_t b[64] = {};
-    GetPrivateProfileStringW(L"DynMap", key, L"", b, 64, g_ini_path.c_str());
+    GetPrivateProfileStringW(island ? L"DynMap.Island" : L"DynMap", key, L"", b, 64, g_ini_path.c_str());
     if (!b[0]) return def;
     wchar_t* end = nullptr;
     const double v = std::wcstod(b, &end);
     return (end != b && std::isfinite(v)) ? v : def;
+}
+
+bool query_map(const std::string& q, bool* island) {
+    *island = false;
+    for (std::size_t p = 0; p < q.size();) {
+        const std::size_t end = q.find('&', p);
+        const std::string part = q.substr(p, end == std::string::npos ? end : end - p);
+        if (part.rfind("map=", 0) == 0) {
+            if (part != "map=anthem" && part != "map=island") return false;
+            *island = part == "map=island";
+        }
+        if (end == std::string::npos) break;
+        p = end + 1;
+    }
+    return true;
 }
 
 bool query_double(const std::string& q, const char* key, double* out) {
@@ -461,7 +497,8 @@ bool serve_file(SOCKET s, std::string rel) {
     std::ifstream f(p, std::ios::binary);
     if (!f) return false;
     std::string body((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-    const bool cache = rel.rfind("/tiles/", 0) == 0 || rel.rfind("/icons/", 0) == 0;
+    const bool cache = rel.rfind("/tiles/", 0) == 0 || rel.rfind("/maps/island/tiles/", 0) == 0 ||
+                       rel.rfind("/icons/", 0) == 0;
     reply(s, "200 OK", mime_for(p.extension().string()), body, cache);
     return true;
 }
@@ -495,18 +532,24 @@ void handle_client(SOCKET s) {
                   std::string(reinterpret_cast<const char*>(kFaviconPng), kFaviconPngSize),
                   true);
         } else if (path == "/api/state") {
-            reply(s, "200 OK", "application/json", state_json());
+            bool island;
+            if (!query_map(query, &island))
+                reply(s, "400 Bad Request", "application/json", "{\"error\":\"Unknown map\"}");
+            else
+                reply(s, "200 OK", "application/json", state_json(island));
         } else if (path == "/api/calib") {
             Calib c;
-            if (query_double(query, "ax", &c.ax) && query_double(query, "bx", &c.bx) &&
+            bool island;
+            if (query_map(query, &island) && query_double(query, "ax", &c.ax) && query_double(query, "bx", &c.bx) &&
                 query_double(query, "az", &c.az) && query_double(query, "bz", &c.bz) &&
                 c.ax != 0 && c.az != 0) {
                 {
                     std::lock_guard<std::mutex> lock(g_mutex);
-                    g_calib = c;
+                    (island ? g_island_calib : g_calib) = c;
                 }
-                save_calib(c);
-                logf("Calibration saved: x*%.6f%+.2f, z*%.6f%+.2f", c.ax, c.bx, c.az, c.bz);
+                save_calib(c, island);
+                logf("%s calibration saved: x*%.6f%+.2f, z*%.6f%+.2f",
+                     island ? "Storm Island" : "Anthem", c.ax, c.bx, c.az, c.bz);
                 reply(s, "200 OK", "application/json", "{\"ok\":true}");
             } else {
                 reply(s, "400 Bad Request", "application/json", "{\"ok\":false}");
@@ -625,11 +668,20 @@ FH2MOD_EXPORT int fh2mod_init(const FH2ModApi* api) {
             g_calib = Calib{};
         if (g_calib.ax == 0) g_calib.ax = 1;
         if (g_calib.az == 0) g_calib.az = 1;
+        g_island_calib.ax = load_double(L"Ax", kIslandCalib.ax, true);
+        g_island_calib.bx = load_double(L"Bx", kIslandCalib.bx, true);
+        g_island_calib.az = load_double(L"Az", kIslandCalib.az, true);
+        g_island_calib.bz = load_double(L"Bz", kIslandCalib.bz, true);
+        if (g_island_calib.ax == 0 || g_island_calib.az == 0) {
+            logf("Invalid Storm Island calibration; restoring map-profile defaults.");
+            g_island_calib = kIslandCalib;
+        }
     }
     WritePrivateProfileStringW(L"DynMap", L"Enabled", enabled ? L"1" : L"0", g_ini_path.c_str());
     WritePrivateProfileStringW(L"DynMap", L"Port", std::to_wstring(port).c_str(), g_ini_path.c_str());
     WritePrivateProfileStringW(L"DynMap", L"PlayerName", name, g_ini_path.c_str());
     save_calib(g_calib);
+    save_calib(g_island_calib, true);
 
     if (api->api_version >= 4 && api->add_setting) {
         FH2Setting setting{};
@@ -648,5 +700,3 @@ FH2MOD_EXPORT int fh2mod_init(const FH2ModApi* api) {
     logf("%s registered", kVersion);
     return 0;
 }
-
-

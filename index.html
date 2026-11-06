@@ -22,6 +22,7 @@
   </header>
 
   <aside class="panel left" id="left">
+    <button class="collapse" data-panel="left" title="Hide panel">&#10094;</button>
     <section>
       <h2>Server sessions</h2>
       <div class="session active"><span class="dot on"></span>
@@ -32,8 +33,13 @@
 
     <section>
       <h2>Settings</h2>
+      <label class="row">Map
+        <select id="optMap"><option value="anthem">Anthem</option><option value="island">Storm Island</option></select></label>
+      <p class="hint" id="mapInfo">Choose the map matching your game session.</p>
+      <p class="hint" id="mapError" role="alert" hidden></p>
       <label class="row"><input type="checkbox" id="optFollow" checked> Follow selected player</label>
       <label class="row"><input type="checkbox" id="optTrail" checked> Show trail</label>
+      <label class="row"><input type="checkbox" id="optNames"> Show player names always</label>
       <label class="row"><input type="checkbox" id="optLandmarks" checked> Show landmarks</label>
       <label class="row"><input type="checkbox" id="optRoads"> Roads layer</label>
       <label class="row"><input type="checkbox" id="optCams" checked> Speed cameras</label>
@@ -58,6 +64,7 @@
   </aside>
 
   <aside class="panel right" id="right">
+    <button class="collapse" data-panel="right" title="Hide panel">&#10095;</button>
     <section>
       <h2>Players <span id="count" class="badge">0</span></h2>
       <div id="players"></div>
@@ -65,6 +72,8 @@
     </section>
   </aside>
 </div>
+<button class="edge-tab left" id="tabLeft" title="Show menu">&#10095;</button>
+<button class="edge-tab right" id="tabRight" title="Show players">&#10094;</button>
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="app.js"></script>
 </body>

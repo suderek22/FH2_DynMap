@@ -78,6 +78,9 @@ button.active { outline: 2px solid #fff; }
 .player .spd small { font-style: normal; font-weight: 400; }
 
 .me { position: relative; width: 44px; height: 44px; }
+.me .dot { position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: #e4e4e4; border: 2px solid #fff; box-shadow: 0 0 4px #000; }
+.me:not(.sel) .ring, .me:not(.sel) img, .me:not(.sel) .tag { display: none; }
+.me.sel .dot { display: none; }
 .me .ring { position: absolute; inset: 6px; border-radius: 50%; border: 2px solid var(--pink); background: rgba(236,36,140,.28); box-shadow: 0 0 14px var(--pink); animation: pulse 1.6s ease-out infinite; }
 .me img { position: absolute; left: 50%; top: 50%; width: 22px; height: auto; margin: -16px 0 0 -11px; filter: drop-shadow(0 0 3px #000); transition: transform .2s linear; }
 .me .tag { position: absolute; left: 50%; top: 40px; transform: translateX(-50%); white-space: nowrap; font-size: 11px; font-weight: 700; background: var(--pink); color: #fff; padding: 1px 7px; border-radius: 999px; }
@@ -86,3 +89,14 @@ button.active { outline: 2px solid #fff; }
 .cal-pt { width: 16px; height: 16px; border: 2px solid #fff; background: var(--pink); border-radius: 50%; box-shadow: 0 0 0 2px #000; }
 
 @media (max-width: 900px) { :root { --panel-w: 230px; } }
+
+.collapse { position: sticky; top: 6px; float: right; margin: 6px 6px 0 0; z-index: 2; width: 24px; height: 24px; padding: 0; line-height: 22px; text-align: center; font-size: 12px; background: rgba(255,255,255,.08); color: var(--pink-2); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+.collapse:hover { background: var(--pink); color: #fff; }
+.panel.hidden { display: none; }
+.edge-tab { display: none; position: absolute; top: 50%; z-index: 900; width: 22px; height: 64px; margin-top: -32px; padding: 0; font-size: 13px; background: rgba(28,16,32,.92); color: var(--pink-2); border: 1px solid var(--line); cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.5); }
+.edge-tab:hover { background: var(--pink); color: #fff; }
+.edge-tab.left { left: 0; border-left: 0; border-radius: 0 10px 10px 0; }
+.edge-tab.right { right: 0; border-right: 0; border-radius: 10px 0 0 10px; }
+.edge-tab.show { display: block; }
+.me .mini { display: none; position: absolute; left: 50%; top: 28px; transform: translateX(-50%); white-space: nowrap; font-size: 9.5px; font-weight: 700; line-height: 1.3; opacity: .8; padding: 0 5px; border-radius: 999px; pointer-events: none; }
+.names .me:not(.sel) .mini { display: block; }

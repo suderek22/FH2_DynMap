@@ -1,0 +1,18 @@
+cmake_minimum_required(VERSION 3.20)
+project(DynMap LANGUAGES CXX)
+
+set(FH2MOD_INCLUDE_DIR "" CACHE PATH "FH2 Mod Platform include directory containing fh2mod.h")
+if(NOT EXISTS "${FH2MOD_INCLUDE_DIR}/fh2mod.h")
+    message(FATAL_ERROR "Set FH2MOD_INCLUDE_DIR to the FH2 Mod Platform include directory")
+endif()
+
+add_library(DynMap SHARED DynMap.cpp)
+target_compile_features(DynMap PRIVATE cxx_std_17)
+target_include_directories(DynMap PRIVATE "${FH2MOD_INCLUDE_DIR}")
+target_compile_definitions(DynMap PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(DynMap PRIVATE ws2_32)
+set_target_properties(DynMap PROPERTIES PREFIX "" RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/dist")
+foreach(config Debug Release RelWithDebInfo MinSizeRel)
+    string(TOUPPER "${config}" upper)
+    set_target_properties(DynMap PROPERTIES RUNTIME_OUTPUT_DIRECTORY_${upper} "${CMAKE_CURRENT_SOURCE_DIR}/dist")
+endforeach()
